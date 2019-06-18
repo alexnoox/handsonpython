@@ -4,10 +4,14 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pylint = "*"
 
 [packages]
 rx = "*"
 keras = "*"
+torch = "*"
+torchvision = "*"
+jupyter = "*"
 
 [requires]
 python_version = "3.6"
