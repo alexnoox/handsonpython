@@ -1,3 +1,5 @@
+# Use Python 3.6+
+
 import multiprocessing
 import random
 import time
