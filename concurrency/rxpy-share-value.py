@@ -46,19 +46,20 @@ def main():
         on_error=lambda e: logging.error(e)
     )
 
-    # while True:
-    with concurrent.futures.ProcessPoolExecutor(4) as executor:
-        rx.from_(get_ids()).pipe(
-            ops.map(lambda i: i * 100),
-            ops.do_action(lambda i: logging.info(f"i is {i}")),
-            # ops.subscribe_on(pool_scheduler),
-            # ops.flat_map(get_ids()),
-            ops.flat_map(lambda s: executor.submit(intense_calculation, s))
-            # ops.map(lambda s: intense_calculation(s))
-        ).subscribe(
-            on_next=lambda i: logging.info(f"PROCESS 1s: {i}"),
-            on_error=lambda e: logging.error(e)
-        )
+    while True:
+        with concurrent.futures.ProcessPoolExecutor(4) as executor:
+            rx.from_(get_ids()).pipe(
+                ops.map(lambda i: i * 100),
+                ops.do_action(lambda i: logging.info(f"i is {i}")),
+                # ops.subscribe_on(pool_scheduler),
+                # ops.flat_map(get_ids()),
+                ops.flat_map(lambda s: executor.submit(intense_calculation, s))
+                # ops.map(lambda s: intense_calculation(s))
+            ).subscribe(
+                on_next=lambda i: logging.info(f"PROCESS 1s: {i}"),
+                on_error=lambda e: logging.error(e),
+                scheduler=pool_scheduler
+            )
 
     input("Press any key to exit\n")
 
