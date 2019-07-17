@@ -19,6 +19,12 @@ def intense_calculation(value):
     time.sleep(random.randint(1, 10) * .1)
     return value
 
+def dispatch_calculation(value):
+    logging.info(f"in intense_calculation with: {value}")
+    # sleep for a random short duration between 0.5 to 2.0 seconds to simulate a long-running calculation
+    time.sleep(random.randint(1, 10) * .1)
+    return value
+
 # calculate number of CPU's, then create a ThreadPoolScheduler with that number of threads
 optimal_thread_count = multiprocessing.cpu_count()
 pool_scheduler = ThreadPoolScheduler(optimal_thread_count - 4)
@@ -46,8 +52,8 @@ def main():
         on_error=lambda e: logging.error(e)
     )
 
-    while True:
-        with concurrent.futures.ProcessPoolExecutor(4) as executor:
+    with concurrent.futures.ProcessPoolExecutor(optimal_thread_count) as executor:
+        while True:
             rx.from_(get_ids()).pipe(
                 ops.map(lambda i: i * 100),
                 ops.do_action(lambda i: logging.info(f"i is {i}")),
@@ -57,8 +63,7 @@ def main():
                 # ops.map(lambda s: intense_calculation(s))
             ).subscribe(
                 on_next=lambda i: logging.info(f"PROCESS 1s: {i}"),
-                on_error=lambda e: logging.error(e),
-                scheduler=pool_scheduler
+                on_error=lambda e: logging.error(e)
             )
 
     input("Press any key to exit\n")
