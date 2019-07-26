@@ -11,6 +11,7 @@ keras = "*"
 torch = "*"
 torchvision = "*"
 jupyter = "*"
+matplotlib = "*"
 
 [requires]
 python_version = "3.6"
