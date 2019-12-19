@@ -2,12 +2,13 @@ import logging
 import multiprocessing
 import time
 import traceback
+from typing import List
 
 import rx
 from rx import operators as ops
 from rx.core import typing
-from rx.core.typing import Scheduler, Disposable
 from rx.scheduler import ThreadPoolScheduler
+from rx.subject import Subject
 
 logging.basicConfig(level=logging.DEBUG, format="[%(threadName)s] %(asctime)-15s %(message)s ")
 
@@ -19,22 +20,22 @@ def print_error(message: str, e: Exception):
 
 class ApiClient:
     def __init__(self):
-        self.mcs = []
+        self.data: List[float] = []
 
-    def fetch_subjects(self):
-        logging.debug(f"in fetch_subjects with {self.mcs}")
+    def fetch_subjects(self) -> List[float]:
+        logging.debug(f"in fetch_subjects with {self.data}")
         time.sleep(1.5)  # simulate a call duration
-        self.mcs.append(len(self.mcs))
-        logging.debug(f"out fetch_subjects {len(self.mcs)}")
-        return self.mcs
+        self.data.append(len(self.data))
+        logging.debug(f"out fetch_subjects {len(self.data)}")
+        return self.data
 
 
-class MyObserver(typing.Observer):
+class MyObserver(typing.Observer[float]):
     def __init__(self):
         logging.debug("in MyObserver.__init__")
         super().__init__()
 
-    def on_next(self, value: int) -> None:
+    def on_next(self, value: float) -> None:
         logging.debug(f"in MyObserver.on_next {value}")
 
     def on_error(self, error: Exception) -> None:
@@ -44,23 +45,16 @@ class MyObserver(typing.Observer):
         logging.debug("in MyObserver.on_completed")
 
 
-class MySubject(typing.Subject):
+class MySubject(typing.Subject[float, float]):
     def __init__(self):
         logging.debug("in MySubject.__init__")
 
         self.bfc = ApiClient()
-        self.observers: list[MyObserver] = []
+        self.subject: typing.Subject[float, float] = Subject()
 
-    def subscribe(self, observer: MyObserver = None, *, scheduler: Scheduler = None) -> Disposable:
-        logging.debug("in MySubject.subscribe")
-        self.observers.append(observer)
-
-    def on_next(self, value: int) -> None:
+    def on_next(self, value: float) -> None:
         logging.debug(f"in MySubject.on_next {value}")
-        rx.from_iterable(self.observers).subscribe(
-            on_next=lambda o: o.on_next(value),
-            on_error=lambda e: print_error("Error in MyObservable", e)
-        )
+        self.subject.on_next(value)
 
     def on_error(self, error: Exception) -> None:
         print_error("Error in MySubject", error)
@@ -68,24 +62,36 @@ class MySubject(typing.Subject):
     def on_completed(self) -> None:
         logging.debug("in MySubject.on_completed")
 
+    def subscribe(self, observer: typing.Observer[float] = None, *, scheduler: typing.Scheduler = None) -> typing.Disposable:
+        logging.debug("in MySubject.subscribe")
+        return self.subject.subscribe(observer)
+
 
 class MyObservable(typing.Observable):
-    def __init__(self):
+    def __init__(self, scheduler):
         logging.debug("in MyObservable.__init__")
 
         self.bfc = ApiClient()
-        self.observers: list[MySubject] = []
+        self.scheduler = scheduler
+        self.subject: Subject[List[float], float] = Subject()
 
-    def fetch_subjects(self):
-        values = self.bfc.fetch_subjects()
-        rx.from_iterable(self.observers).subscribe(
-            on_next=lambda o: o.on_next(values),
-            on_error=lambda e: print_error("Error in MyObservable", e)
+    def start(self):
+        logging.debug("in MyObservable.start")
+        rx.interval(1.0).pipe(
+            ops.subscribe_on(self.scheduler),
+            ops.flat_map(lambda i: self.fetch_subjects())
+        ).subscribe(
+            on_next=lambda v: self.subject.on_next(v),
+            on_error=lambda e: print_error("Error in interval loop", e)
         )
 
-    def subscribe(self, observer: MySubject = None, *, scheduler: typing.Scheduler = None) -> typing.Disposable:
+    def fetch_subjects(self) -> List[float]:
+        logging.debug("in MyObservable.fetch_subjects")
+        return self.bfc.fetch_subjects()
+
+    def subscribe(self, subject: typing.Subject[List[float], float] = None, *, scheduler: typing.Scheduler = None) -> typing.Disposable:
         logging.debug("in MyObservable.subscribe")
-        self.observers.append(observer)
+        return self.subject.subscribe(subject)
 
 
 def main():
@@ -95,19 +101,14 @@ def main():
     thread_pool = ThreadPoolScheduler(optimal_thread_count)
     logging.info(f"using {optimal_thread_count} threads")
 
-    observable = MyObservable()
+    observable = MyObservable(thread_pool)
     subject = MySubject()
     observer = MyObserver()
 
     observable.subscribe(subject)
     subject.subscribe(observer)
 
-    rx.interval(1.0).pipe(
-        ops.subscribe_on(thread_pool)
-    ).subscribe(
-        on_next=lambda i: observable.fetch_subjects(),
-        on_error=lambda e: print_error("Error in interval loop", e)
-    )
+    observable.start()
 
     input('Press <enter> to quit\n')
 

@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import multiprocessing
 import random
@@ -66,14 +67,27 @@ calc = CalcService()
 x = threading.Thread(target=calc.get_values_loop, daemon=True)
 x.start()
 
-rx.interval(1.0).pipe(
-    ops.observe_on(pool_scheduler),
-    ops.flat_map(lambda _: calc.fetch_values()),
-    ops.map(expand_array),
-    ops.do_action(stream.on_next)
-).subscribe(
-    on_next=lambda data: logging.info(f"interval {data}"),
-    on_error=print_error
-)
+def expand_and_next(mbs):
+    logging.info(f"in CalcService.fetch_values {mbs}")
+    rx.from_(mbs).pipe(
+        ops.map(expand_array),
+        ops.do_action(stream.on_next)
+    ).subscribe(
+        on_next=lambda data: logging.info(f"expand_and_next {data}"),
+        on_error=print_error
+    )
+
+with concurrent.futures.ProcessPoolExecutor(5) as executor:
+    rx.interval(1.0).pipe(
+        ops.observe_on(pool_scheduler),
+        ops.flat_map(lambda _: calc.fetch_values()),
+        ops.do_action(lambda mbs: executor.submit(expand_and_next, mbs))
+    ).subscribe(
+        on_next=lambda data: logging.info(f"interval {data}"),
+        on_error=print_error
+    )
+
+while True:
+    time.sleep(10)
 
 input("Press any key to exit\n")
